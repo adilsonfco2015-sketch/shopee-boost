@@ -1,10 +1,15 @@
 import OpenAI from "openai";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export async function POST(req: Request) {
+  const { nome, preco, link, modelo } = await req.json();
+
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
+
 
 export async function POST(req: Request) {
   try {
