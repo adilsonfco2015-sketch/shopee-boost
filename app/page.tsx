@@ -9,50 +9,24 @@ export default function Home() {
   const [resultado, setResultado] = useState("");
   const [copiado, setCopiado] = useState(false);
 
-  function gerarDescricao() {
-    let texto = "";
+  async function gerarDescricao() {
+  setResultado("Gerando com IA...");
 
-    if (modelo === "shopee") {
-      texto = `
-🔥 ${nome} com SUPER OFERTA!
+  const response = await fetch("/api/gerar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome, preco, link, modelo }),
+  });
 
-💰 Apenas R$ ${preco}
+  const data = await response.json();
 
-👉 Confira aqui: ${link}
-
-⚡ Produto ideal para quem busca qualidade e custo-benefício.
-🚀 Aproveite antes que acabe!
-      `;
-    }
-
-    if (modelo === "instagram") {
-      texto = `
-✨ ${nome} que está bombando!
-
-💰 Só R$ ${preco}
-
-Corre garantir o seu 👇
-${link}
-
-#oferta #promoção #achadinhos #shopee
-      `;
-    }
-
-    if (modelo === "whatsapp") {
-      texto = `
-🔥 PROMOÇÃO IMPERDÍVEL 🔥
-
-Produto: ${nome}
-Preço: R$ ${preco}
-
-Link: ${link}
-
-Me chama se tiver interesse 👌
-      `;
-    }
-
-    setResultado(texto);
+  if (!response.ok) {
+    setResultado(data?.error || "Erro ao gerar descrição com IA.");
+    return;
   }
+
+  setResultado(data.resultado);
+}
 
   function copiarTexto() {
     navigator.clipboard.writeText(resultado);
