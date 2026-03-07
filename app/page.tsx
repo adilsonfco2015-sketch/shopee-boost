@@ -1,232 +1,335 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 
-type Modelo = "shopee" | "instagram" | "whatsapp";
+type CanalResult = {
+  shopee: string;
+  instagram: string;
+  whatsapp: string;
+};
 
-export default function Home() {
+function copyToClipboard(text: string) {
+  if (!text) return;
+  navigator.clipboard.writeText(text);
+}
+
+export default function Page() {
+  const [tab, setTab] = useState<"texto" | "imagem">("imagem");
+
+  // ======= CAMPOS COMUNS =======
   const [nome, setNome] = useState("");
   const [preco, setPreco] = useState("");
   const [link, setLink] = useState("");
-  const [modelo, setModelo] = useState<Modelo>("shopee");
 
-  const [resultado, setResultado] = useState("");
-  const [copiado, setCopiado] = useState(false);
-  const [carregando, setCarregando] = useState(false);
+  // ======= ABA TEXTO (modelo simples sem IA, só template) =======
+  const textoGerado = useMemo(() => {
+    const n = nome?.trim() || "Produto";
+    const p = preco?.trim() || "R$ ??";
+    const l = link?.trim() || "";
 
-  const podeGerar = useMemo(() => {
-    return nome.trim() && preco.trim() && link.trim() && modelo;
-  }, [nome, preco, link, modelo]);
+    return `🔥 ${n} com SUPER OFERTA!
 
-  async function gerarDescricao() {
-    setCopiado(false);
+💰 Apenas ${p}
 
-    if (!podeGerar) {
-      setResultado("Preencha Nome, Preço e Link e selecione o modelo.");
-      return;
-    }
+👉 Confira aqui: ${l}
 
-    setCarregando(true);
-    setResultado("Gerando com IA...");
+⚡ Produto ideal para quem busca qualidade e custo-benefício.
+🚀 Aproveite antes que acabe!`;
+  }, [nome, preco, link]);
 
-    // Timeout para não travar eternamente
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000); // 20s
+  // ======= ABA IMAGEM + MULTICANAL =======
+  const [imageBase64, setImageBase64] = useState<string>("");
+  const [imagemPreview, setImagemPreview] = useState<string>("");
 
+  const [loadingImagem, setLoadingImagem] = useState(false);
+  const [erroImagem, setErroImagem] = useState("");
+  const [resultadoImagem, setResultadoImagem] = useState<CanalResult>({
+    shopee: "",
+    instagram: "",
+    whatsapp: "",
+  });
+
+  function onSelectImage(file?: File) {
+    if (!file) return;
+
+    setErroImagem("");
+    setResultadoImagem({ shopee: "", instagram: "", whatsapp: "" });
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result); // data:image/...;base64,...
+      setImageBase64(dataUrl);
+      setImagemPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function gerarImagemIA() {
     try {
-      const response = await fetch("/api/gerar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome, preco, link, modelo }),
-        signal: controller.signal,
-      });
+      setErroImagem("");
+      setLoadingImagem(true);
+      setResultadoImagem({ shopee: "", instagram: "", whatsapp: "" });
 
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setResultado(
-          (data && (data.error || data.message)) ||
-            `Erro na API (${response.status})`
-        );
+      if (!imageBase64) {
+        setErroImagem("Selecione uma imagem antes de gerar.");
         return;
       }
 
-      setResultado(data?.resultado || "Sem resposta da IA.");
-    } catch (err: any) {
-      if (err?.name === "AbortError") {
-        setResultado("Demorou demais (timeout). Tente novamente.");
-      } else {
-        setResultado("Erro de conexão. Tente novamente.");
+      const response = await fetch("/api/gerar-imagem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          nome,
+          preco,
+          link,
+        }),
+      });
+
+      const data = await response.json();
+
+      // Se a API devolver { error: "..."} ou status != 200
+      if (!response.ok) {
+        setErroImagem(data?.error || "Erro ao gerar com IA (imagem).");
+        return;
       }
+
+      // Se a API devolveu raw por não conseguir parsear JSON
+      if (data?.raw && !data?.shopee) {
+        setErroImagem(
+          "A IA retornou um formato inesperado. Veja 'raw' no console."
+        );
+        console.log("RAW:", data.raw);
+        return;
+      }
+
+      setResultadoImagem({
+        shopee: data?.shopee ?? "",
+        instagram: data?.instagram ?? "",
+        whatsapp: data?.whatsapp ?? "",
+      });
+    } catch (e: any) {
+      setErroImagem("Erro ao gerar com IA (imagem).");
+      console.log("Erro gerarImagemIA:", e?.message ?? e);
     } finally {
-      clearTimeout(timeout);
-      setCarregando(false);
+      setLoadingImagem(false);
     }
   }
 
-  async function copiarTexto() {
-    try {
-      await navigator.clipboard.writeText(resultado || "");
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 1500);
-    } catch {
-      setResultado("Não consegui copiar. Selecione o texto e copie manualmente.");
-    }
-  }
+  const box: React.CSSProperties = {
+    maxWidth: 980,
+    margin: "24px auto",
+    padding: 16,
+    border: "1px solid #e5e5e5",
+    borderRadius: 12,
+    fontFamily: "Arial, sans-serif",
+  };
+
+  const label: React.CSSProperties = { fontSize: 12, opacity: 0.75 };
+  const input: React.CSSProperties = {
+    width: "100%",
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    marginTop: 6,
+  };
+
+  const btn: React.CSSProperties = {
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    background: "#fff",
+    cursor: "pointer",
+  };
+
+  const btnPrimary: React.CSSProperties = {
+    ...btn,
+    border: "1px solid #111",
+    fontWeight: 700,
+  };
+
+  const tabBtn = (active: boolean): React.CSSProperties => ({
+    ...btn,
+    border: active ? "2px solid #111" : "1px solid #ddd",
+    fontWeight: active ? 700 : 500,
+  });
+
+  const card: React.CSSProperties = {
+    border: "1px solid #e5e5e5",
+    borderRadius: 12,
+    padding: 12,
+    background: "#fff",
+  };
+
+  const textarea: React.CSSProperties = {
+    width: "100%",
+    minHeight: 140,
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    marginTop: 8,
+    whiteSpace: "pre-wrap",
+  };
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#0f172a",
-        color: "#e2e8f0",
-        display: "flex",
-        justifyContent: "center",
-        padding: 24,
-        fontFamily:
-          'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"',
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          background: "#111c33",
-          borderRadius: 16,
-          padding: 20,
-          boxShadow: "0 10px 30px rgba(0,0,0,.35)",
-        }}
-      >
-        <h1 style={{ margin: 0, marginBottom: 16, fontSize: 22 }}>
-          🚀 Shopee Boost
-        </h1>
+    <div style={box}>
+      <h2 style={{ margin: 0 }}>Shopee Boost</h2>
+      <p style={{ marginTop: 6, opacity: 0.75 }}>
+        Gerador de texto e modo imagem + multicanal (Shopee / Instagram / WhatsApp)
+      </p>
 
-        <label style={{ display: "block", marginBottom: 8, opacity: 0.9 }}>
-          Nome do produto
-        </label>
-        <input
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          placeholder="Ex: Carregador Turbo 20W"
-          style={inputStyle}
-        />
-
-        <label style={{ display: "block", marginBottom: 8, marginTop: 14, opacity: 0.9 }}>
-          Preço
-        </label>
-        <input
-          value={preco}
-          onChange={(e) => setPreco(e.target.value)}
-          placeholder="Ex: 49,90"
-          style={inputStyle}
-        />
-
-        <label style={{ display: "block", marginBottom: 8, marginTop: 14, opacity: 0.9 }}>
-          Link do produto
-        </label>
-        <input
-          value={link}
-          onChange={(e) => setLink(e.target.value)}
-          placeholder="Cole seu link afiliado"
-          style={inputStyle}
-        />
-
-        <label style={{ display: "block", marginBottom: 8, marginTop: 14, opacity: 0.9 }}>
-          Modelo
-        </label>
-        <select
-          value={modelo}
-          onChange={(e) => setModelo(e.target.value as Modelo)}
-          style={selectStyle}
-        >
-          <option value="shopee">Modelo Shopee</option>
-          <option value="instagram">Modelo Instagram</option>
-          <option value="whatsapp">Modelo WhatsApp</option>
-        </select>
-
-        <button
-          onClick={gerarDescricao}
-          disabled={carregando}
-          style={{
-            marginTop: 16,
-            width: "100%",
-            padding: "14px 12px",
-            borderRadius: 12,
-            border: "none",
-            background: carregando ? "#16a34a99" : "#16a34a",
-            color: "white",
-            fontWeight: 700,
-            fontSize: 16,
-            cursor: carregando ? "not-allowed" : "pointer",
-          }}
-        >
-          {carregando ? "Gerando..." : "Gerar Descrição"}
+      {/* TABS */}
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+        <button style={tabBtn(tab === "texto")} onClick={() => setTab("texto")}>
+          Texto (modelo)
         </button>
+        <button style={tabBtn(tab === "imagem")} onClick={() => setTab("imagem")}>
+          Imagem + Multicanal (IA)
+        </button>
+      </div>
 
-        <div style={{ marginTop: 14 }}>
-          <textarea
-            value={resultado}
-            readOnly
-            placeholder="Seu texto vai aparecer aqui..."
-            style={textareaStyle}
-          />
+      {/* CAMPOS BASE */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 16 }}>
+        <div>
+          <div style={label}>Nome do produto</div>
+          <input style={input} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Carregador Turbo 20W" />
         </div>
-
-        <button
-          onClick={copiarTexto}
-          disabled={!resultado || carregando}
-          style={{
-            marginTop: 10,
-            width: "100%",
-            padding: "12px 12px",
-            borderRadius: 12,
-            border: "none",
-            background: "#3b82f6",
-            color: "white",
-            fontWeight: 700,
-            cursor: !resultado || carregando ? "not-allowed" : "pointer",
-            opacity: !resultado || carregando ? 0.6 : 1,
-          }}
-        >
-          {copiado ? "✅ Copiado!" : "Copiar Texto"}
-        </button>
-
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-          Dica: Se der erro, ele aparecerá aqui no texto (não fica travado).
+        <div>
+          <div style={label}>Preço</div>
+          <input style={input} value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="Ex: R$ 49,90" />
+        </div>
+        <div>
+          <div style={label}>Link</div>
+          <input style={input} value={link} onChange={(e) => setLink(e.target.value)} placeholder="Link do produto" />
         </div>
       </div>
-    </main>
+
+      {/* ABA TEXTO */}
+      {tab === "texto" && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ margin: 0 }}>Texto gerado (modelo simples)</h3>
+            <button style={btn} onClick={() => copyToClipboard(textoGerado)}>
+              Copiar
+            </button>
+          </div>
+
+          <textarea style={textarea} readOnly value={textoGerado} />
+          <p style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+            * Esse modo é template (não usa IA). Use a aba “Imagem + Multicanal” para gerar pela IA.
+          </p>
+        </div>
+      )}
+
+      {/* ABA IMAGEM */}
+      {tab === "imagem" && (
+        <div style={{ marginTop: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Imagem + Multicanal (IA)</h3>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={card}>
+              <div style={label}>Upload da imagem do produto</div>
+              <input
+                style={{ ...input, padding: 8 }}
+                type="file"
+                accept="image/*"
+                onChange={(e) => onSelectImage(e.target.files?.[0])}
+              />
+
+              {imagemPreview ? (
+                <div style={{ marginTop: 10 }}>
+                  <div style={label}>Preview</div>
+                  <img
+                    src={imagemPreview}
+                    alt="preview"
+                    style={{ width: "100%", borderRadius: 12, border: "1px solid #eee", marginTop: 6 }}
+                  />
+                </div>
+              ) : (
+                <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                  Selecione uma imagem para ativar o modo IA.
+                </p>
+              )}
+
+              <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                <button style={btnPrimary} onClick={gerarImagemIA} disabled={loadingImagem}>
+                  {loadingImagem ? "Gerando..." : "Gerar com IA"}
+                </button>
+                <button
+                  style={btn}
+                  onClick={() => {
+                    setImageBase64("");
+                    setImagemPreview("");
+                    setResultadoImagem({ shopee: "", instagram: "", whatsapp: "" });
+                    setErroImagem("");
+                  }}
+                  disabled={loadingImagem}
+                >
+                  Limpar
+                </button>
+              </div>
+
+              {erroImagem && (
+                <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: "#fff4f4", border: "1px solid #ffd0d0" }}>
+                  <b>Erro:</b> {erroImagem}
+                </div>
+              )}
+            </div>
+
+            <div style={card}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <b>Resultado (IA)</b>
+                <button
+                  style={btn}
+                  onClick={() =>
+                    copyToClipboard(
+                      `🛒 SHOPEE:\n${resultadoImagem.shopee}\n\n📸 INSTAGRAM:\n${resultadoImagem.instagram}\n\n💬 WHATSAPP:\n${resultadoImagem.whatsapp}`
+                    )
+                  }
+                >
+                  Copiar tudo
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                <div style={card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <b>🛒 Shopee</b>
+                    <button style={btn} onClick={() => copyToClipboard(resultadoImagem.shopee)}>
+                      Copiar
+                    </button>
+                  </div>
+                  <textarea style={textarea} readOnly value={resultadoImagem.shopee} />
+                </div>
+
+                <div style={card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <b>📸 Instagram</b>
+                    <button style={btn} onClick={() => copyToClipboard(resultadoImagem.instagram)}>
+                      Copiar
+                    </button>
+                  </div>
+                  <textarea style={textarea} readOnly value={resultadoImagem.instagram} />
+                </div>
+
+                <div style={card}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <b>💬 WhatsApp</b>
+                    <button style={btn} onClick={() => copyToClipboard(resultadoImagem.whatsapp)}>
+                      Copiar
+                    </button>
+                  </div>
+                  <textarea style={textarea} readOnly value={resultadoImagem.whatsapp} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+            Dica: se estiver no Vercel e não gerar, provavelmente falta a variável <b>OPENAI_API_KEY</b> no projeto.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(148,163,184,.25)",
-  background: "#0b1224",
-  color: "#e2e8f0",
-  outline: "none",
-};
-
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "12px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(148,163,184,.25)",
-  background: "#0b1224",
-  color: "#e2e8f0",
-  outline: "none",
-};
-
-const textareaStyle: React.CSSProperties = {
-  width: "100%",
-  minHeight: 180,
-  resize: "vertical",
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid rgba(148,163,184,.25)",
-  background: "#0b1224",
-  color: "#e2e8f0",
-  outline: "none",
-};
