@@ -3,80 +3,142 @@ import OpenAI from "openai";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function stripCodeFences(text: string) {
+  return text
+    .split("```json").join("")
+    .split("```").join("")
+    .trim();
+}
+
 export async function POST(req: Request) {
   try {
-    const { nome, preco, link, modelo } = await req.json();
+    const body = await req.json();
+
+    const nome: string = body?.nome ?? "";
+    const preco: string = body?.preco ?? "";
+    const link: string = body?.link ?? "";
+    const objetivo: string = body?.objetivo ?? "vender rápido";
 
     if (!process.env.OPENAI_API_KEY) {
       return Response.json(
-        { error: "OPENAI_API_KEY não configurada no servidor (Vercel)." },
+        { error: "OPENAI_API_KEY não configurada no servidor." },
         { status: 500 }
       );
     }
 
-    if (!nome || !preco || !link || !modelo) {
+    if (!nome.trim()) {
       return Response.json(
-        { error: "Preencha nome, preço, link e selecione o modelo." },
+        { error: "Preencha pelo menos o nome do produto." },
         { status: 400 }
       );
     }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const instrucaoPorModelo =
-      modelo === "instagram"
-        ? "Crie uma legenda curta e chamativa para Instagram, com CTA e 12-18 hashtags no final."
-        : modelo === "whatsapp"
-        ? "Crie uma mensagem curta e direta para WhatsApp, com CTA e foco em conversão (sem hashtags)."
-        : "Crie uma descrição/legenda persuasiva estilo Shopee Video, com CTA e 12-18 hashtags no final.";
-
     const prompt = `
-Você é um copywriter especialista em afiliados.
+Você é um copywriter especialista em afiliados no Brasil.
 
-Produto: ${nome}
-Preço: R$ ${preco}
-Link: ${link}
+Crie 3 VARIAÇÕES diferentes de copy para o produto abaixo:
+- Produto: ${nome}
+- Preço: ${preco || "(não informado)"}
+- Link: ${link || "(não informado)"}
+- Objetivo: ${objetivo}
 
-Tarefa:
-${instrucaoPorModelo}
+Para cada variação, gere:
+1) "shopee" = texto para Shopee
+2) "instagram" = legenda para Instagram
+3) "whatsapp" = mensagem curta para WhatsApp
 
 Regras:
-- Comece com um HOOK forte na primeira linha
-- Linguagem simples e objetiva
-- Use emojis com moderação
-- Traga benefícios claros e motivo para comprar agora
-- Inclua CTA para clicar no link
-- Se for Instagram ou Shopee: inclua 12 a 18 hashtags relevantes no final
-Retorne APENAS o texto final pronto para copiar.
-`.trim();
+- Português do Brasil
+- Linguagem persuasiva e clara
+- Sem exageros absurdos
+- Use CTA quando fizer sentido
+- Se houver link, inclua no texto
+- Cada variação deve ter estilo um pouco diferente:
+  - versão 1: direta
+  - versão 2: mais emocional
+  - versão 3: mais agressiva/urgência
+
+Responda SOMENTE com JSON válido, sem markdown e sem crases, neste formato exato:
+
+{
+  "variacoes": [
+    {
+      "nome": "Versão 1 - Direta",
+      "shopee": "...",
+      "instagram": "...",
+      "whatsapp": "..."
+    },
+    {
+      "nome": "Versão 2 - Emocional",
+      "shopee": "...",
+      "instagram": "...",
+      "whatsapp": "..."
+    },
+    {
+      "nome": "Versão 3 - Urgência",
+      "shopee": "...",
+      "instagram": "...",
+      "whatsapp": "..."
+    }
+  ]
+}
+`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: "Você escreve copy de alta conversão." },
-        { role: "user", content: prompt },
+        {
+          role: "system",
+          content: "Você escreve copy de alta conversão para afiliados.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
       ],
-      temperature: 0.7,
+      temperature: 0.9,
     });
 
-    const resultado = completion.choices?.[0]?.message?.content?.trim() || "";
+    const raw = completion.choices?.[0]?.message?.content ?? "";
+    const cleaned = stripCodeFences(raw);
 
-    if (!resultado) {
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
       return Response.json(
-        { error: "A IA não retornou texto. Tente novamente." },
+        { error: "A IA não retornou JSON válido.", raw: cleaned },
         { status: 500 }
       );
     }
 
-    return Response.json({ resultado });
+    const variacoes = Array.isArray(parsed?.variacoes)
+      ? parsed.variacoes.slice(0, 3).map((item: any, index: number) => ({
+          nome: String(item?.nome || `Versão ${index + 1}`),
+          shopee: String(item?.shopee || ""),
+          instagram: String(item?.instagram || ""),
+          whatsapp: String(item?.whatsapp || ""),
+        }))
+      : [];
+
+    if (!variacoes.length) {
+      return Response.json(
+        { error: "Nenhuma variação foi gerada." },
+        { status: 500 }
+      );
+    }
+
+    return Response.json({ variacoes });
   } catch (err: any) {
-    // Log no servidor (Vercel/terminal)
-    console.error("ERRO /api/gerar:", err);
-
-    const msg =
-      err?.message ||
-      "Falha ao gerar. Verifique a chave/limites e tente novamente.";
-
-    return Response.json({ error: msg }, { status: 500 });
+    return Response.json(
+      {
+        error: "Erro ao gerar com IA (texto).",
+        details: String(err?.message ?? err),
+      },
+      { status: 500 }
+    );
   }
 }
