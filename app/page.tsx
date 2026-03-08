@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type Tab = "texto" | "imagem";
 
@@ -15,6 +15,18 @@ type VariacaoTexto = {
   shopee: string;
   instagram: string;
   whatsapp: string;
+};
+
+type HistoryItem = {
+  id: string;
+  tipo: "texto" | "imagem";
+  createdAt: string;
+  nome: string;
+  preco: string;
+  link: string;
+  objetivo: string;
+  variacoesTexto?: VariacaoTexto[];
+  resultadoImagem?: CanalResult;
 };
 
 function copyToClipboard(text: string) {
@@ -49,7 +61,7 @@ function CanalCard({
         border: `1px solid ${cor}`,
         borderRadius: 16,
         padding: 14,
-        boxShadow: `0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(0,0,0,0.18)`,
+        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
       }}
     >
       <div
@@ -58,6 +70,7 @@ function CanalCard({
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 10,
+          gap: 10,
         }}
       >
         <div
@@ -84,6 +97,7 @@ function CanalCard({
             padding: "8px 12px",
             cursor: "pointer",
             fontWeight: 700,
+            whiteSpace: "nowrap",
           }}
         >
           {copiado ? "Copiado!" : "Copiar"}
@@ -110,20 +124,152 @@ function CanalCard({
   );
 }
 
+function HistoryCard({
+  item,
+  onLoad,
+}: {
+  item: HistoryItem;
+  onLoad: (item: HistoryItem) => void;
+}) {
+  return (
+    <button
+      onClick={() => onLoad(item)}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 14,
+        padding: 12,
+        color: "#e8eefc",
+        cursor: "pointer",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          alignItems: "center",
+        }}
+      >
+        <strong style={{ fontSize: 14 }}>
+          {item.tipo === "texto" ? "✍️ Texto" : "🖼️ Imagem"}
+        </strong>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>{item.createdAt}</span>
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 14,
+          fontWeight: 700,
+          color: "#ffffff",
+        }}
+      >
+        {item.nome || "Produto sem nome"}
+      </div>
+
+      <div style={{ marginTop: 6, fontSize: 12, opacity: 0.78 }}>
+        Objetivo: {item.objetivo}
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 12,
+          opacity: 0.72,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {item.link || "Sem link"}
+      </div>
+    </button>
+  );
+}
+
 export default function Page() {
   const [tab, setTab] = useState<Tab>("texto");
 
-  // ===== CAMPOS COMUNS =====
+  // Campos comuns
   const [nome, setNome] = useState("");
   const [preco, setPreco] = useState("");
   const [link, setLink] = useState("");
 
-  // ===== MODO TEXTO COM IA =====
+  // Texto + IA
   const [objetivoTexto, setObjetivoTexto] = useState("vender rápido");
   const [loadingTexto, setLoadingTexto] = useState(false);
   const [erroTexto, setErroTexto] = useState("");
   const [variacoesTexto, setVariacoesTexto] = useState<VariacaoTexto[]>([]);
   const [variacaoAtiva, setVariacaoAtiva] = useState(0);
+
+  // Imagem + IA
+  const [imageBase64, setImageBase64] = useState("");
+  const [imagemPreview, setImagemPreview] = useState("");
+  const [objetivoImagem, setObjetivoImagem] = useState("vender rápido");
+  const [loadingImagem, setLoadingImagem] = useState(false);
+  const [erroImagem, setErroImagem] = useState("");
+  const [resultadoImagem, setResultadoImagem] = useState<CanalResult>({
+    shopee: "",
+    instagram: "",
+    whatsapp: "",
+  });
+
+  // Histórico
+  const [historico, setHistorico] = useState<HistoryItem[]>([]);
+
+  useEffect(() => {
+    const salvo = localStorage.getItem("shopee-boost-historico");
+    if (salvo) {
+      try {
+        setHistorico(JSON.parse(salvo));
+      } catch {}
+    }
+  }, []);
+
+  function salvarHistorico(novo: HistoryItem[]) {
+    setHistorico(novo);
+    localStorage.setItem("shopee-boost-historico", JSON.stringify(novo));
+  }
+
+  function adicionarAoHistorico(item: HistoryItem) {
+    const atualizado = [item, ...historico].slice(0, 20);
+    salvarHistorico(atualizado);
+  }
+
+  function limparHistorico() {
+    localStorage.removeItem("shopee-boost-historico");
+    setHistorico([]);
+  }
+
+  function carregarCampanha(item: HistoryItem) {
+    setNome(item.nome || "");
+    setPreco(item.preco || "");
+    setLink(item.link || "");
+
+    if (item.tipo === "texto") {
+      setTab("texto");
+      setObjetivoTexto(item.objetivo || "vender rápido");
+      setVariacoesTexto(item.variacoesTexto || []);
+      setVariacaoAtiva(0);
+      setErroTexto("");
+    } else {
+      setTab("imagem");
+      setObjetivoImagem(item.objetivo || "vender rápido");
+      setResultadoImagem(
+        item.resultadoImagem || {
+          shopee: "",
+          instagram: "",
+          whatsapp: "",
+        }
+      );
+      setErroImagem("");
+      setImagemPreview("");
+      setImageBase64("");
+    }
+  }
 
   async function gerarTextoIA() {
     try {
@@ -145,7 +291,19 @@ export default function Page() {
         return;
       }
 
-      setVariacoesTexto(data?.variacoes ?? []);
+      const variacoes = data?.variacoes ?? [];
+      setVariacoesTexto(variacoes);
+
+      adicionarAoHistorico({
+        id: crypto.randomUUID(),
+        tipo: "texto",
+        createdAt: new Date().toLocaleString("pt-BR"),
+        nome,
+        preco,
+        link,
+        objetivo: objetivoTexto,
+        variacoesTexto: variacoes,
+      });
     } catch (e: any) {
       setErroTexto("Erro ao gerar com IA (texto).");
       console.log("Erro gerarTextoIA:", e?.message ?? e);
@@ -172,19 +330,6 @@ ${atual.whatsapp}`;
 
     copyToClipboard(texto);
   }
-
-  // ===== MODO IMAGEM + MULTICANAL =====
-  const [imageBase64, setImageBase64] = useState("");
-  const [imagemPreview, setImagemPreview] = useState("");
-  const [objetivoImagem, setObjetivoImagem] = useState("vender rápido");
-
-  const [loadingImagem, setLoadingImagem] = useState(false);
-  const [erroImagem, setErroImagem] = useState("");
-  const [resultadoImagem, setResultadoImagem] = useState<CanalResult>({
-    shopee: "",
-    instagram: "",
-    whatsapp: "",
-  });
 
   function onSelectImage(file?: File) {
     if (!file) return;
@@ -239,10 +384,23 @@ ${atual.whatsapp}`;
         return;
       }
 
-      setResultadoImagem({
+      const resultado = {
         shopee: data?.shopee ?? "",
         instagram: data?.instagram ?? "",
         whatsapp: data?.whatsapp ?? "",
+      };
+
+      setResultadoImagem(resultado);
+
+      adicionarAoHistorico({
+        id: crypto.randomUUID(),
+        tipo: "imagem",
+        createdAt: new Date().toLocaleString("pt-BR"),
+        nome,
+        preco,
+        link,
+        objetivo: objetivoImagem,
+        resultadoImagem: resultado,
       });
     } catch (e: any) {
       setErroImagem("Erro ao gerar com IA (imagem).");
@@ -268,36 +426,6 @@ ${resultadoImagem.whatsapp}`;
     copyToClipboard(texto);
   }
 
-  const box: React.CSSProperties = {
-    maxWidth: 1180,
-    margin: "24px auto",
-    padding: 20,
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 20,
-    fontFamily: "Arial, sans-serif",
-    background: "linear-gradient(180deg, #081224 0%, #0b1730 100%)",
-    color: "#e8eefc",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
-  };
-
-  const label: React.CSSProperties = {
-    fontSize: 13,
-    opacity: 0.85,
-    marginBottom: 6,
-    display: "block",
-  };
-
-  const input: React.CSSProperties = {
-    width: "100%",
-    padding: 12,
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.10)",
-    background: "rgba(0,0,0,0.22)",
-    color: "#e8eefc",
-    outline: "none",
-    marginTop: 6,
-  };
-
   const btn: React.CSSProperties = {
     padding: "10px 14px",
     borderRadius: 12,
@@ -312,7 +440,7 @@ ${resultadoImagem.whatsapp}`;
     ...btn,
     background: "linear-gradient(90deg, #16a34a 0%, #22c55e 100%)",
     border: "none",
-    boxShadow: "0 8px 24px rgba(34,197,94,0.35)",
+    boxShadow: "0 8px 24px rgba(34, 197, 94, 0.35)",
   };
 
   const tabBtn = (active: boolean): React.CSSProperties => ({
@@ -333,17 +461,48 @@ ${resultadoImagem.whatsapp}`;
     background: "rgba(255,255,255,0.03)",
   };
 
+  const label: React.CSSProperties = {
+    fontSize: 13,
+    opacity: 0.85,
+    marginBottom: 6,
+    display: "block",
+  };
+
+  const input: React.CSSProperties = {
+    width: "100%",
+    padding: 12,
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(0,0,0,0.22)",
+    color: "#e8eefc",
+    outline: "none",
+    marginTop: 6,
+  };
+
   const variacaoAtual = variacoesTexto[variacaoAtiva];
 
   return (
     <main
       style={{
         minHeight: "100vh",
-        background: "radial-gradient(circle at top, #10244a 0%, #071121 45%, #050c18 100%)",
+        background:
+          "radial-gradient(circle at top, #10244a 0%, #071121 45%, #050c18 100%)",
         padding: 20,
       }}
     >
-      <div style={box}>
+      <div
+        style={{
+          maxWidth: 1400,
+          margin: "24px auto",
+          padding: 20,
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 20,
+          fontFamily: "Arial, sans-serif",
+          background: "linear-gradient(180deg, #081224 0%, #0b1730 100%)",
+          color: "#e8eefc",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+        }}
+      >
         <div
           style={{
             display: "flex",
@@ -361,7 +520,6 @@ ${resultadoImagem.whatsapp}`;
           </div>
         </div>
 
-        {/* TABS */}
         <div style={{ display: "flex", gap: 10, marginTop: 18, marginBottom: 18 }}>
           <button style={tabBtn(tab === "texto")} onClick={() => setTab("texto")}>
             ✍️ Modo Texto + IA
@@ -371,331 +529,384 @@ ${resultadoImagem.whatsapp}`;
           </button>
         </div>
 
-        {/* CAMPOS BASE */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 14,
-            marginBottom: 18,
+            gridTemplateColumns: "1fr 320px",
+            gap: 18,
+            alignItems: "start",
           }}
         >
+          {/* COLUNA PRINCIPAL */}
           <div>
-            <label style={label}>Nome do produto</label>
-            <input
-              style={input}
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex: Carregador Turbo 20W"
-            />
-          </div>
-
-          <div>
-            <label style={label}>Preço</label>
-            <input
-              style={input}
-              value={preco}
-              onChange={(e) => setPreco(e.target.value)}
-              placeholder="Ex: R$ 49,90"
-            />
-          </div>
-
-          <div>
-            <label style={label}>Link do produto</label>
-            <input
-              style={input}
-              value={link}
-              onChange={(e) => setLink(e.target.value)}
-              placeholder="Cole seu link afiliado"
-            />
-          </div>
-        </div>
-
-        {/* ABA TEXTO */}
-        {tab === "texto" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "400px 1fr",
-              gap: 18,
-              alignItems: "start",
-            }}
-          >
-            <div style={card}>
-              <h3 style={{ marginTop: 0 }}>Entrada da campanha</h3>
-
-              <div style={{ marginTop: 14 }}>
-                <label style={label}>Objetivo</label>
-                <select
-                  value={objetivoTexto}
-                  onChange={(e) => setObjetivoTexto(e.target.value)}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: 14,
+                marginBottom: 18,
+              }}
+            >
+              <div>
+                <label style={label}>Nome do produto</label>
+                <input
                   style={input}
-                >
-                  <option value="vender rápido">Vender rápido</option>
-                  <option value="queimar estoque">Queimar estoque</option>
-                  <option value="tráfego">Gerar tráfego</option>
-                  <option value="engajamento">Engajamento</option>
-                </select>
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Ex: Carregador Turbo 20W"
+                />
               </div>
 
-              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <button style={{ ...btnPrimary, flex: 1 }} onClick={gerarTextoIA} disabled={loadingTexto}>
-                  {loadingTexto ? "Gerando..." : "Gerar 3 variações"}
-                </button>
-
-                <button
-                  style={btn}
-                  onClick={() => {
-                    setVariacoesTexto([]);
-                    setVariacaoAtiva(0);
-                    setErroTexto("");
-                  }}
-                  disabled={loadingTexto}
-                >
-                  Limpar
-                </button>
+              <div>
+                <label style={label}>Preço</label>
+                <input
+                  style={input}
+                  value={preco}
+                  onChange={(e) => setPreco(e.target.value)}
+                  placeholder="Ex: R$ 49,90"
+                />
               </div>
 
-              {erroTexto && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(255,0,0,0.08)",
-                    border: "1px solid rgba(255,80,80,0.25)",
-                    color: "#ffd6d6",
-                  }}
-                >
-                  <b>Erro:</b> {erroTexto}
-                </div>
-              )}
-
-              <p style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
-                Esse modo agora gera 3 variações automáticas com IA.
-              </p>
+              <div>
+                <label style={label}>Link do produto</label>
+                <input
+                  style={input}
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  placeholder="Cole seu link afiliado"
+                />
+              </div>
             </div>
 
-            <div style={card}>
+            {tab === "texto" && (
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
+                  display: "grid",
+                  gridTemplateColumns: "360px 1fr",
+                  gap: 18,
+                  alignItems: "start",
                 }}
               >
-                <div>
-                  <h3 style={{ margin: 0 }}>Resultados do texto (3 variações)</h3>
-                  <div style={{ opacity: 0.72, marginTop: 4 }}>
-                    Escolha uma variação e copie por canal
+                <div style={card}>
+                  <h3 style={{ marginTop: 0 }}>Entrada da campanha</h3>
+
+                  <div style={{ marginTop: 14 }}>
+                    <label style={label}>Objetivo</label>
+                    <select
+                      value={objetivoTexto}
+                      onChange={(e) => setObjetivoTexto(e.target.value)}
+                      style={input}
+                    >
+                      <option value="vender rápido">Vender rápido</option>
+                      <option value="queimar estoque">Queimar estoque</option>
+                      <option value="tráfego">Gerar tráfego</option>
+                      <option value="engajamento">Engajamento</option>
+                    </select>
                   </div>
-                </div>
 
-                <button style={btn} onClick={copiarTudoTexto}>
-                  Copiar tudo
-                </button>
-              </div>
-
-              {variacoesTexto.length > 0 && (
-                <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-                  {variacoesTexto.map((v, i) => (
+                  <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
                     <button
-                      key={i}
-                      onClick={() => setVariacaoAtiva(i)}
+                      style={{ ...btnPrimary, flex: 1 }}
+                      onClick={gerarTextoIA}
+                      disabled={loadingTexto}
+                    >
+                      {loadingTexto ? "Gerando..." : "Gerar 3 variações"}
+                    </button>
+
+                    <button
+                      style={btn}
+                      onClick={() => {
+                        setVariacoesTexto([]);
+                        setVariacaoAtiva(0);
+                        setErroTexto("");
+                      }}
+                      disabled={loadingTexto}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+
+                  {erroTexto && (
+                    <div
                       style={{
-                        ...btn,
-                        background:
-                          variacaoAtiva === i
-                            ? "linear-gradient(90deg, rgba(249,115,22,0.25) 0%, rgba(168,85,247,0.18) 100%)"
-                            : "rgba(255,255,255,0.05)",
-                        border:
-                          variacaoAtiva === i
-                            ? "1px solid rgba(249,115,22,0.45)"
-                            : "1px solid rgba(255,255,255,0.08)",
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "rgba(255,0,0,0.08)",
+                        border: "1px solid rgba(255,80,80,0.25)",
+                        color: "#ffd6d6",
                       }}
                     >
-                      {v.nome}
-                    </button>
-                  ))}
+                      <b>Erro:</b> {erroTexto}
+                    </div>
+                  )}
+
+                  <p style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
+                    Gera 3 versões automáticas com IA e salva no histórico.
+                  </p>
                 </div>
-              )}
 
-              {variacaoAtual ? (
-                <div style={{ display: "grid", gap: 14 }}>
-                  <CanalCard
-                    titulo="Shopee"
-                    emoji="🛒"
-                    cor="#f97316"
-                    texto={variacaoAtual.shopee}
-                  />
-
-                  <CanalCard
-                    titulo="Instagram"
-                    emoji="📸"
-                    cor="#a855f7"
-                    texto={variacaoAtual.instagram}
-                  />
-
-                  <CanalCard
-                    titulo="WhatsApp"
-                    emoji="💬"
-                    cor="#22c55e"
-                    texto={variacaoAtual.whatsapp}
-                  />
-                </div>
-              ) : (
-                <div style={{ opacity: 0.7, fontSize: 14 }}>
-                  Gere uma campanha para ver as 3 variações aqui.
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ABA IMAGEM */}
-        {tab === "imagem" && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "400px 1fr",
-              gap: 18,
-              alignItems: "start",
-            }}
-          >
-            <div style={card}>
-              <h3 style={{ marginTop: 0 }}>Entrada da campanha</h3>
-
-              <label style={label}>Imagem do produto</label>
-              <input
-                style={{ ...input, padding: 8 }}
-                type="file"
-                accept="image/*"
-                onChange={(e) => onSelectImage(e.target.files?.[0])}
-              />
-
-              {imagemPreview ? (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ ...label, marginBottom: 8 }}>Preview</div>
-                  <img
-                    src={imagemPreview}
-                    alt="preview"
+                <div style={card}>
+                  <div
                     style={{
-                      width: "100%",
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.08)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 12,
                     }}
-                  />
+                  >
+                    <div>
+                      <h3 style={{ margin: 0 }}>Resultados do texto</h3>
+                      <div style={{ opacity: 0.72, marginTop: 4 }}>
+                        Escolha uma variação e copie por canal
+                      </div>
+                    </div>
+
+                    <button style={btn} onClick={copiarTudoTexto}>
+                      Copiar tudo
+                    </button>
+                  </div>
+
+                  {variacoesTexto.length > 0 && (
+                    <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                      {variacoesTexto.map((v, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setVariacaoAtiva(i)}
+                          style={{
+                            ...btn,
+                            background:
+                              variacaoAtiva === i
+                                ? "linear-gradient(90deg, rgba(249,115,22,0.25) 0%, rgba(168,85,247,0.18) 100%)"
+                                : "rgba(255,255,255,0.05)",
+                            border:
+                              variacaoAtiva === i
+                                ? "1px solid rgba(249,115,22,0.45)"
+                                : "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          {v.nome}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {variacaoAtual ? (
+                    <div style={{ display: "grid", gap: 14 }}>
+                      <CanalCard
+                        titulo="Shopee"
+                        emoji="🛒"
+                        cor="#f97316"
+                        texto={variacaoAtual.shopee}
+                      />
+
+                      <CanalCard
+                        titulo="Instagram"
+                        emoji="📸"
+                        cor="#a855f7"
+                        texto={variacaoAtual.instagram}
+                      />
+
+                      <CanalCard
+                        titulo="WhatsApp"
+                        emoji="💬"
+                        cor="#22c55e"
+                        texto={variacaoAtual.whatsapp}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ opacity: 0.7, fontSize: 14 }}>
+                      Gere uma campanha para ver as variações aqui.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <p style={{ marginTop: 12, fontSize: 12, opacity: 0.75 }}>
-                  Selecione uma imagem para ativar a geração por IA.
-                </p>
-              )}
-
-              <div style={{ marginTop: 14 }}>
-                <label style={label}>Objetivo</label>
-                <select
-                  value={objetivoImagem}
-                  onChange={(e) => setObjetivoImagem(e.target.value)}
-                  style={input}
-                >
-                  <option value="vender rápido">Vender rápido</option>
-                  <option value="queimar estoque">Queimar estoque</option>
-                  <option value="tráfego">Gerar tráfego</option>
-                  <option value="engajamento">Engajamento</option>
-                </select>
               </div>
+            )}
 
-              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <button style={{ ...btnPrimary, flex: 1 }} onClick={gerarImagemIA} disabled={loadingImagem}>
-                  {loadingImagem ? "Gerando..." : "Gerar com IA"}
-                </button>
-
-                <button
-                  style={btn}
-                  onClick={() => {
-                    setImageBase64("");
-                    setImagemPreview("");
-                    setResultadoImagem({
-                      shopee: "",
-                      instagram: "",
-                      whatsapp: "",
-                    });
-                    setErroImagem("");
-                  }}
-                  disabled={loadingImagem}
-                >
-                  Limpar
-                </button>
-              </div>
-
-              {erroImagem && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "rgba(255,0,0,0.08)",
-                    border: "1px solid rgba(255,80,80,0.25)",
-                    color: "#ffd6d6",
-                  }}
-                >
-                  <b>Erro:</b> {erroImagem}
-                </div>
-              )}
-
-              <p style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
-                Dica: use print do anúncio ou foto do produto com benefícios visíveis.
-              </p>
-            </div>
-
-            <div style={card}>
+            {tab === "imagem" && (
               <div
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
+                  display: "grid",
+                  gridTemplateColumns: "360px 1fr",
+                  gap: 18,
+                  alignItems: "start",
                 }}
               >
-                <div>
-                  <h3 style={{ margin: 0 }}>Resultados (3 canais)</h3>
-                  <div style={{ opacity: 0.72, marginTop: 4 }}>
-                    Copie individualmente ou tudo de uma vez
+                <div style={card}>
+                  <h3 style={{ marginTop: 0 }}>Entrada da campanha</h3>
+
+                  <label style={label}>Imagem do produto</label>
+                  <input
+                    style={{ ...input, padding: 8 }}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => onSelectImage(e.target.files?.[0])}
+                  />
+
+                  {imagemPreview ? (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ ...label, marginBottom: 8 }}>Preview</div>
+                      <img
+                        src={imagemPreview}
+                        alt="preview"
+                        style={{
+                          width: "100%",
+                          borderRadius: 14,
+                          border: "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <p style={{ marginTop: 12, fontSize: 12, opacity: 0.75 }}>
+                      Selecione uma imagem para ativar a geração por IA.
+                    </p>
+                  )}
+
+                  <div style={{ marginTop: 14 }}>
+                    <label style={label}>Objetivo</label>
+                    <select
+                      value={objetivoImagem}
+                      onChange={(e) => setObjetivoImagem(e.target.value)}
+                      style={input}
+                    >
+                      <option value="vender rápido">Vender rápido</option>
+                      <option value="queimar estoque">Queimar estoque</option>
+                      <option value="tráfego">Gerar tráfego</option>
+                      <option value="engajamento">Engajamento</option>
+                    </select>
                   </div>
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                    <button
+                      style={{ ...btnPrimary, flex: 1 }}
+                      onClick={gerarImagemIA}
+                      disabled={loadingImagem}
+                    >
+                      {loadingImagem ? "Gerando..." : "Gerar com IA"}
+                    </button>
+
+                    <button
+                      style={btn}
+                      onClick={() => {
+                        setImageBase64("");
+                        setImagemPreview("");
+                        setResultadoImagem({
+                          shopee: "",
+                          instagram: "",
+                          whatsapp: "",
+                        });
+                        setErroImagem("");
+                      }}
+                      disabled={loadingImagem}
+                    >
+                      Limpar
+                    </button>
+                  </div>
+
+                  {erroImagem && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "rgba(255,0,0,0.08)",
+                        border: "1px solid rgba(255,80,80,0.25)",
+                        color: "#ffd6d6",
+                      }}
+                    >
+                      <b>Erro:</b> {erroImagem}
+                    </div>
+                  )}
+
+                  <p style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
+                    Gera multicanal por imagem e salva no histórico.
+                  </p>
                 </div>
 
-                <button style={btn} onClick={copiarTudoImagem}>
-                  Copiar tudo
-                </button>
+                <div style={card}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: 12,
+                    }}
+                  >
+                    <div>
+                      <h3 style={{ margin: 0 }}>Resultados da imagem</h3>
+                      <div style={{ opacity: 0.72, marginTop: 4 }}>
+                        Copie individualmente ou tudo de uma vez
+                      </div>
+                    </div>
+
+                    <button style={btn} onClick={copiarTudoImagem}>
+                      Copiar tudo
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 14 }}>
+                    <CanalCard
+                      titulo="Shopee"
+                      emoji="🛒"
+                      cor="#f97316"
+                      texto={resultadoImagem.shopee}
+                    />
+
+                    <CanalCard
+                      titulo="Instagram"
+                      emoji="📸"
+                      cor="#a855f7"
+                      texto={resultadoImagem.instagram}
+                    />
+
+                    <CanalCard
+                      titulo="WhatsApp"
+                      emoji="💬"
+                      cor="#22c55e"
+                      texto={resultadoImagem.whatsapp}
+                    />
+                  </div>
+                </div>
               </div>
-
-              <div style={{ display: "grid", gap: 14 }}>
-                <CanalCard
-                  titulo="Shopee"
-                  emoji="🛒"
-                  cor="#f97316"
-                  texto={resultadoImagem.shopee}
-                />
-
-                <CanalCard
-                  titulo="Instagram"
-                  emoji="📸"
-                  cor="#a855f7"
-                  texto={resultadoImagem.instagram}
-                />
-
-                <CanalCard
-                  titulo="WhatsApp"
-                  emoji="💬"
-                  cor="#22c55e"
-                  texto={resultadoImagem.whatsapp}
-                />
-              </div>
-            </div>
+            )}
           </div>
-        )}
+
+          {/* SIDEBAR HISTÓRICO */}
+          <aside style={card}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 12,
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>Histórico</h3>
+                <div style={{ opacity: 0.72, marginTop: 4, fontSize: 12 }}>
+                  Últimas 20 campanhas
+                </div>
+              </div>
+
+              <button style={btn} onClick={limparHistorico}>
+                Limpar
+              </button>
+            </div>
+
+            {historico.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.72 }}>
+                Nenhuma campanha salva ainda.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {historico.map((item) => (
+                  <HistoryCard key={item.id} item={item} onLoad={carregarCampanha} />
+                ))}
+              </div>
+            )}
+          </aside>
+        </div>
       </div>
     </main>
   );
